@@ -63,21 +63,15 @@ CREATE INDEX challenge_versions_published_idx ON challenge_versions(problem_id, 
 
 CREATE OR REPLACE FUNCTION prevent_published_challenge_change() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
-    IF OLD.published_at IS NOT NULL AND (
-        NEW.problem_id IS DISTINCT FROM OLD.problem_id OR
-        NEW.version IS DISTINCT FROM OLD.version OR
-        NEW.manifest_schema_version IS DISTINCT FROM OLD.manifest_schema_version OR
-        NEW.manifest IS DISTINCT FROM OLD.manifest OR
-        NEW.artifact_uri IS DISTINCT FROM OLD.artifact_uri OR
-        NEW.artifact_sha256 IS DISTINCT FROM OLD.artifact_sha256 OR
-        NEW.evaluation_ref IS DISTINCT FROM OLD.evaluation_ref OR
-        NEW.published_at IS DISTINCT FROM OLD.published_at
-    ) THEN
+    IF OLD.published_at IS NOT NULL AND (TG_OP = 'DELETE' OR NEW IS DISTINCT FROM OLD) THEN
         RAISE EXCEPTION 'published challenge version is immutable';
+    END IF;
+    IF TG_OP = 'DELETE' THEN
+        RETURN OLD;
     END IF;
     RETURN NEW;
 END;
 $$;
 CREATE TRIGGER challenge_versions_immutable
-BEFORE UPDATE ON challenge_versions
+BEFORE UPDATE OR DELETE ON challenge_versions
 FOR EACH ROW EXECUTE FUNCTION prevent_published_challenge_change();
