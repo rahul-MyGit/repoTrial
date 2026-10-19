@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
-	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -18,6 +18,14 @@ type memoryRepo struct {
 	token    [32]byte
 	csrf     [32]byte
 	revoked  bool
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (fn roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return fn(req) }
+
+func providerResponse(body string) *http.Response {
+	return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body))}
 }
 
 func (r *memoryRepo) CreateSession(_ context.Context, identity Identity, token, csrf [32]byte, _ time.Time) (User, error) {
@@ -44,32 +52,30 @@ func (r *memoryRepo) RevokeSession(_ context.Context, token [32]byte) error {
 
 func TestGoogleFlowAndCSRFBoundary(t *testing.T) {
 	var receivedVerifier string
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	client := &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 		switch r.URL.Path {
 		case "/token":
 			if err := r.ParseForm(); err != nil {
 				t.Fatal(err)
 			}
 			receivedVerifier = r.Form.Get("code_verifier")
-			_ = json.NewEncoder(w).Encode(map[string]string{"access_token": "access", "token_type": "Bearer"})
+			return providerResponse(`{"access_token":"access","token_type":"Bearer"}`), nil
 		case "/userinfo":
 			if r.Header.Get("Authorization") != "Bearer access" {
 				t.Error("userinfo missing access token")
 			}
-			_ = json.NewEncoder(w).Encode(map[string]any{
-				"sub": "google-subject", "email": "user@example.com", "email_verified": true, "name": "User",
-			})
+			return providerResponse(`{"sub":"google-subject","email":"user@example.com","email_verified":true,"name":"User"}`), nil
 		default:
 			t.Errorf("unexpected provider path %s", r.URL.Path)
+			return providerResponse(`{}`), nil
 		}
-	}))
-	defer provider.Close()
+	})}
 
 	repo := &memoryRepo{}
 	h, err := NewHandler(repo, Config{
 		ClientID: "client", ClientSecret: "secret", RedirectURL: "http://app.test/api/v1/auth/google/callback",
-		AppURL: "http://app.test", StateSecret: "state-secret", AuthorizationURL: provider.URL + "/authorize",
-		TokenURL: provider.URL + "/token", UserInfoURL: provider.URL + "/userinfo",
+		AppURL: "http://app.test", StateSecret: "state-secret", AuthorizationURL: "https://provider.test/authorize",
+		TokenURL: "https://provider.test/token", UserInfoURL: "https://provider.test/userinfo", HTTPClient: client,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -160,15 +166,12 @@ func TestGoogleFlowAndCSRFBoundary(t *testing.T) {
 }
 
 func TestUnverifiedGoogleIdentityIsRejected(t *testing.T) {
-	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"sub": "subject", "email": "user@example.com", "email_verified": false,
-		})
-	}))
-	defer provider.Close()
+	client := &http.Client{Transport: roundTripFunc(func(_ *http.Request) (*http.Response, error) {
+		return providerResponse(`{"sub":"subject","email":"user@example.com","email_verified":false}`), nil
+	})}
 	h, err := NewHandler(&memoryRepo{}, Config{
 		ClientID: "client", ClientSecret: "secret", RedirectURL: "http://app.test/callback",
-		AppURL: "http://app.test", StateSecret: "secret", UserInfoURL: provider.URL,
+		AppURL: "http://app.test", StateSecret: "secret", UserInfoURL: "https://provider.test/userinfo", HTTPClient: client,
 	})
 	if err != nil {
 		t.Fatal(err)
