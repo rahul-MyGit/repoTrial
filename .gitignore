@@ -2,6 +2,9 @@
 *.md
 !/README.md
 /internal/
+/.agents/skills/
+/local-skills/
+/skills-lock.json
 
 # Secrets and local configuration.
 .env
@@ -15,6 +18,7 @@ terraform.tfstate*
 # Dependencies and generated output.
 node_modules/
 .next/
+*.tsbuildinfo
 .turbo/
 .output/
 dist/
