@@ -10,6 +10,10 @@
   "entrypoint": "cmd/server/main.go",
   "baselineCommand": ["go", "test", "./..."],
   "visibleTestCommand": ["go", "test", "./..."],
+  "baselineExpected": {
+    "exitCode": 1,
+    "outputContains": "TestCheckoutRetryReturnsOriginalOrder"
+  },
   "allowedPatchPaths": [
     "internal/checkout/handler.go",
     "internal/checkout/model.go",
