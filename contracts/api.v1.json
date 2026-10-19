@@ -99,11 +99,11 @@
         "responses": { "200": { "$ref": "#/components/responses/Files" }, "409": { "$ref": "#/components/responses/Error" } }
       }
     },
-    "/attempts/{attemptId}/files/{path}": {
+    "/attempts/{attemptId}/file": {
       "get": {
         "operationId": "readFile",
-        "description": "Requires investigating or submitted. Path is a URL-encoded sourceRoot-relative path and must resolve to a regular public file.",
-        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }, { "name": "path", "in": "path", "required": true, "schema": { "type": "string" } }, { "name": "revision", "in": "query", "schema": { "type": "integer", "minimum": 0 } }],
+        "description": "Requires investigating or submitted. The sourceRoot-relative path must resolve to a regular public file.",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }, { "name": "path", "in": "query", "required": true, "schema": { "type": "string" } }, { "name": "revision", "in": "query", "schema": { "type": "integer", "minimum": 0 } }],
         "responses": { "200": { "$ref": "#/components/responses/File" }, "404": { "$ref": "#/components/responses/Error" } }
       }
     },
