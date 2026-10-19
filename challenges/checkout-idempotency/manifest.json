@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "slug": "checkout-idempotency",
+  "version": 1,
+  "title": "The checkout retry that fails",
+  "summary": "A client repeats a checkout request with the same Idempotency-Key after losing its response. The retry should return the original order, but the service reports a duplicate key. Run the visible tests, explain the failure, and direct the AI to repair retry handling. A key reused with a different cart must conflict; keys belong to individual users; concurrent retries must create one order.",
+  "language": "go",
+  "runtime": "go1.25",
+  "sourceRoot": "source",
+  "entrypoint": "cmd/server/main.go",
+  "baselineCommand": ["go", "test", "./..."],
+  "visibleTestCommand": ["go", "test", "./..."],
+  "allowedPatchPaths": [
+    "internal/checkout/handler.go",
+    "internal/checkout/model.go",
+    "internal/checkout/pricing.go",
+    "internal/checkout/repository.go",
+    "internal/checkout/service.go"
+  ],
+  "visibleTestPaths": ["internal/checkout/*_test.go"],
+  "tags": ["http", "idempotency", "concurrency"],
+  "difficulty": "intermediate",
+  "limits": {
+    "cpuMillis": 1000,
+    "memoryMiB": 512,
+    "timeoutSeconds": 60,
+    "outputKiB": 128
+  }
+}
