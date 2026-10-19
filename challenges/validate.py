@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -49,9 +50,12 @@ def validate(manifest_path: pathlib.Path) -> None:
     if not command or not all(isinstance(part, str) and part for part in command):
         raise ValueError("baselineCommand must be a nonempty argument vector")
     timeout = manifest["limits"]["timeoutSeconds"]
+    run_environment = os.environ.copy()
+    run_environment["GOWORK"] = "off"
     result = subprocess.run(
         command,
         cwd=source,
+        env=run_environment,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,

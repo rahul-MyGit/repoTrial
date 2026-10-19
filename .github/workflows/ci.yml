@@ -46,3 +46,14 @@ jobs:
       - run: bun install --frozen-lockfile
       - run: bun --cwd apps/web check
       - run: bun --cwd apps/web build
+
+  challenge-baseline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: challenges/checkout-idempotency/source/go.mod
+          cache-dependency-path: challenges/checkout-idempotency/source/go.mod
+      - name: Confirm intended baseline failure
+        run: python3 challenges/validate.py challenges/checkout-idempotency/manifest.json
