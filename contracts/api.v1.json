@@ -1,0 +1,234 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "RepoTrial API",
+    "version": "1.0.0",
+    "description": "V1 participant API. JSON errors use the Error schema. Mutations require a same-origin session cookie and CSRF protection. There is no direct file-write endpoint."
+  },
+  "servers": [{ "url": "/api/v1" }],
+  "security": [{ "session": [] }],
+  "paths": {
+    "/auth/google/start": {
+      "get": {
+        "operationId": "startGoogleSignIn",
+        "security": [],
+        "description": "Starts OAuth authorization with state and PKCE, then redirects to Google.",
+        "responses": { "302": { "description": "Google authorization URL" } }
+      }
+    },
+    "/auth/google/callback": {
+      "get": {
+        "operationId": "finishGoogleSignIn",
+        "security": [],
+        "description": "Validates OAuth state and identity, sets a secure HttpOnly session cookie, then redirects to the application.",
+        "responses": { "302": { "description": "Application URL" }, "400": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/auth/session": {
+      "get": {
+        "operationId": "getSession",
+        "responses": { "200": { "$ref": "#/components/responses/Session" }, "401": { "$ref": "#/components/responses/Error" } }
+      },
+      "delete": {
+        "operationId": "deleteSession",
+        "responses": { "204": { "description": "Session revoked" }, "401": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/problems": {
+      "get": {
+        "operationId": "listProblems",
+        "security": [],
+        "parameters": [
+          { "name": "cursor", "in": "query", "schema": { "type": "string" } },
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } }
+        ],
+        "responses": { "200": { "$ref": "#/components/responses/Problems" } }
+      }
+    },
+    "/problems/{slug}": {
+      "get": {
+        "operationId": "getProblem",
+        "security": [],
+        "parameters": [{ "$ref": "#/components/parameters/Slug" }],
+        "responses": { "200": { "$ref": "#/components/responses/Problem" }, "404": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/attempts": {
+      "post": {
+        "operationId": "createAttempt",
+        "description": "Creates an attempt pinned to the current published challenge version. Reuse the same Idempotency-Key for retried requests.",
+        "parameters": [{ "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "$ref": "#/components/requestBodies/CreateAttempt" },
+        "responses": { "201": { "$ref": "#/components/responses/Attempt" }, "401": { "$ref": "#/components/responses/Error" }, "409": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/attempts/{attemptId}": {
+      "get": {
+        "operationId": "getAttempt",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Attempt" }, "403": { "$ref": "#/components/responses/Error" }, "404": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/attempts/{attemptId}/baseline-runs": {
+      "post": {
+        "operationId": "queueBaselineRun",
+        "description": "Only valid in created or baseline_ready. The initial source revision is run without exposing files or AI. An infrastructure failure may be retried.",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }, { "$ref": "#/components/parameters/IdempotencyKey" }],
+        "responses": { "202": { "$ref": "#/components/responses/Run" }, "409": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/attempts/{attemptId}/diagnoses": {
+      "post": {
+        "operationId": "recordDiagnosis",
+        "description": "The first diagnosis is immutable and requires a completed baseline run with an intended challenge failure. It unlocks repository and AI access. Later diagnoses are revisions.",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/Diagnosis" },
+        "responses": { "201": { "$ref": "#/components/responses/Diagnosis" }, "409": { "$ref": "#/components/responses/Error" } }
+      },
+      "get": {
+        "operationId": "listDiagnoses",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Diagnoses" } }
+      }
+    },
+    "/attempts/{attemptId}/files": {
+      "get": {
+        "operationId": "listFiles",
+        "description": "Requires investigating or submitted. Returns the attempt revision's public file tree; private evaluation is excluded.",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }, { "name": "revision", "in": "query", "schema": { "type": "integer", "minimum": 0 } }],
+        "responses": { "200": { "$ref": "#/components/responses/Files" }, "409": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/attempts/{attemptId}/file": {
+      "get": {
+        "operationId": "readFile",
+        "description": "Requires investigating or submitted. The sourceRoot-relative path must resolve to a regular public file.",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }, { "name": "path", "in": "query", "required": true, "schema": { "type": "string" } }, { "name": "revision", "in": "query", "schema": { "type": "integer", "minimum": 0 } }],
+        "responses": { "200": { "$ref": "#/components/responses/File" }, "404": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/attempts/{attemptId}/ai-turns": {
+      "post": {
+        "operationId": "createAiTurn",
+        "description": "Requires investigating, one active turn per attempt. Server-owned tools can list, search, read, and propose a patch; they cannot execute code or write files. The response records a durable turn; a streaming transport may be added without changing its state model.",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }, { "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "$ref": "#/components/requestBodies/AiTurn" },
+        "responses": { "202": { "$ref": "#/components/responses/AiTurn" }, "409": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } }
+      },
+      "get": {
+        "operationId": "listAiTurns",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }],
+        "responses": { "200": { "$ref": "#/components/responses/AiTurns" } }
+      }
+    },
+    "/attempts/{attemptId}/patches/{patchId}": {
+      "get": {
+        "operationId": "getPatch",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }, { "$ref": "#/components/parameters/PatchId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Patch" }, "404": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/attempts/{attemptId}/patches/{patchId}/decision": {
+      "post": {
+        "operationId": "decidePatch",
+        "description": "Accept validates base revision and all file hashes, applies the AI proposal atomically, and increments revision. Reject leaves files unchanged. A stale proposal returns 409.",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }, { "$ref": "#/components/parameters/PatchId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/PatchDecision" },
+        "responses": { "200": { "$ref": "#/components/responses/Patch" }, "409": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/attempts/{attemptId}/reverts": {
+      "post": {
+        "operationId": "revertRevision",
+        "description": "Server-generated inverse of an accepted patch; only the latest revision can be reverted, creating a new revision.",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }],
+        "requestBody": { "$ref": "#/components/requestBodies/Revert" },
+        "responses": { "200": { "$ref": "#/components/responses/Attempt" }, "409": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/attempts/{attemptId}/runs": {
+      "post": {
+        "operationId": "queueVisibleRun",
+        "description": "Runs visible tests against the exact persisted revision in the request; requires investigating and allows one active run per attempt.",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }, { "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "$ref": "#/components/requestBodies/Run" },
+        "responses": { "202": { "$ref": "#/components/responses/Run" }, "409": { "$ref": "#/components/responses/Error" }, "429": { "$ref": "#/components/responses/Error" } }
+      },
+      "get": {
+        "operationId": "listRuns",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Runs" } }
+      }
+    },
+    "/attempts/{attemptId}/runs/{runId}": {
+      "get": {
+        "operationId": "getRun",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }, { "$ref": "#/components/parameters/RunId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Run" }, "404": { "$ref": "#/components/responses/Error" } }
+      }
+    },
+    "/attempts/{attemptId}/submission": {
+      "post": {
+        "operationId": "submitAttempt",
+        "description": "Atomically snapshots the requested current revision and queues private evaluation; only one submission is allowed in V1.",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }, { "$ref": "#/components/parameters/IdempotencyKey" }],
+        "requestBody": { "$ref": "#/components/requestBodies/Submission" },
+        "responses": { "202": { "$ref": "#/components/responses/Submission" }, "409": { "$ref": "#/components/responses/Error" } }
+      },
+      "get": {
+        "operationId": "getSubmission",
+        "parameters": [{ "$ref": "#/components/parameters/AttemptId" }],
+        "responses": { "200": { "$ref": "#/components/responses/Submission" }, "404": { "$ref": "#/components/responses/Error" } }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": { "session": { "type": "apiKey", "in": "cookie", "name": "repotrial_session" } },
+    "parameters": {
+      "Slug": { "name": "slug", "in": "path", "required": true, "schema": { "type": "string" } },
+      "AttemptId": { "name": "attemptId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "RunId": { "name": "runId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "PatchId": { "name": "patchId", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } },
+      "IdempotencyKey": { "name": "Idempotency-Key", "in": "header", "required": true, "schema": { "type": "string", "minLength": 1, "maxLength": 128 } }
+    },
+    "requestBodies": {
+      "CreateAttempt": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["problemSlug"], "properties": { "problemSlug": { "type": "string" } } } } } },
+      "Diagnosis": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["suspectedCause", "errorEvidence", "firstInspection"], "properties": { "suspectedCause": { "type": "string", "minLength": 1, "maxLength": 4000 }, "errorEvidence": { "type": "string", "minLength": 1, "maxLength": 4000 }, "firstInspection": { "type": "string", "minLength": 1, "maxLength": 4000 }, "confidence": { "type": "integer", "minimum": 0, "maximum": 100 } } } } } },
+      "AiTurn": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["prompt", "baseRevision"], "properties": { "prompt": { "type": "string", "minLength": 1, "maxLength": 12000 }, "baseRevision": { "type": "integer", "minimum": 0 }, "selectedPath": { "type": "string" } } } } } },
+      "PatchDecision": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["decision"], "properties": { "decision": { "enum": ["accept", "reject"] } } } } } },
+      "Revert": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["revision"], "properties": { "revision": { "type": "integer", "minimum": 1 } } } } } },
+      "Run": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["revision"], "properties": { "revision": { "type": "integer", "minimum": 0 } } } } } },
+      "Submission": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["revision"], "properties": { "revision": { "type": "integer", "minimum": 0 } } } } } }
+    },
+    "responses": {
+      "Error": { "description": "Request failed", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Session": { "description": "Authenticated session", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Session" } } } },
+      "Problems": { "description": "Published problems", "content": { "application/json": { "schema": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "items": { "$ref": "#/components/schemas/Problem" } }, "nextCursor": { "type": ["string", "null"] } } } } } },
+      "Problem": { "description": "Published problem", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Problem" } } } },
+      "Attempt": { "description": "Attempt state", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Attempt" } } } },
+      "Diagnosis": { "description": "Diagnosis", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Diagnosis" } } } },
+      "Diagnoses": { "description": "Diagnosis history", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Diagnosis" } } } } },
+      "Files": { "description": "Public file tree", "content": { "application/json": { "schema": { "type": "object", "required": ["revision", "items"], "properties": { "revision": { "type": "integer" }, "items": { "type": "array", "items": { "$ref": "#/components/schemas/FileEntry" } } } } } } },
+      "File": { "description": "File contents", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/File" } } } },
+      "AiTurn": { "description": "AI turn", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/AiTurn" } } } },
+      "AiTurns": { "description": "AI turn history", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/AiTurn" } } } } },
+      "Patch": { "description": "Patch proposal", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Patch" } } } },
+      "Run": { "description": "Run", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Run" } } } },
+      "Runs": { "description": "Run history", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Run" } } } } },
+      "Submission": { "description": "Submission and private outcome when complete", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Submission" } } } }
+    },
+    "schemas": {
+      "Error": { "type": "object", "required": ["code", "message"], "properties": { "code": { "type": "string" }, "message": { "type": "string" }, "requestId": { "type": "string" } } },
+      "Session": { "type": "object", "required": ["user"], "properties": { "user": { "type": "object", "required": ["id", "displayName"], "properties": { "id": { "type": "string", "format": "uuid" }, "displayName": { "type": "string" }, "avatarUrl": { "type": ["string", "null"] } } } } },
+      "Problem": { "type": "object", "required": ["slug", "version", "title", "summary", "language", "difficulty"], "properties": { "slug": { "type": "string" }, "version": { "type": "integer" }, "title": { "type": "string" }, "summary": { "type": "string" }, "language": { "const": "go" }, "difficulty": { "enum": ["beginner", "intermediate", "advanced"] }, "tags": { "type": "array", "items": { "type": "string" } } } },
+      "Attempt": { "type": "object", "required": ["id", "problemSlug", "challengeVersion", "state", "revision", "createdAt"], "properties": { "id": { "type": "string", "format": "uuid" }, "problemSlug": { "type": "string" }, "challengeVersion": { "type": "integer" }, "state": { "enum": ["created", "baseline_queued", "baseline_ready", "investigating", "submitted"] }, "revision": { "type": "integer", "minimum": 0 }, "createdAt": { "type": "string", "format": "date-time" }, "submittedAt": { "type": ["string", "null"], "format": "date-time" } } },
+      "Diagnosis": { "type": "object", "required": ["id", "attemptId", "sequence", "suspectedCause", "errorEvidence", "firstInspection", "createdAt"], "properties": { "id": { "type": "string", "format": "uuid" }, "attemptId": { "type": "string", "format": "uuid" }, "sequence": { "type": "integer", "minimum": 1 }, "suspectedCause": { "type": "string" }, "errorEvidence": { "type": "string" }, "firstInspection": { "type": "string" }, "confidence": { "type": ["integer", "null"] }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "FileEntry": { "type": "object", "required": ["path", "sizeBytes"], "properties": { "path": { "type": "string" }, "sizeBytes": { "type": "integer", "minimum": 0 } } },
+      "File": { "type": "object", "required": ["path", "revision", "sha256", "content"], "properties": { "path": { "type": "string" }, "revision": { "type": "integer" }, "sha256": { "type": "string" }, "content": { "type": "string" } } },
+      "AiTurn": { "type": "object", "required": ["id", "attemptId", "baseRevision", "status", "prompt", "createdAt"], "properties": { "id": { "type": "string", "format": "uuid" }, "attemptId": { "type": "string", "format": "uuid" }, "baseRevision": { "type": "integer" }, "status": { "enum": ["queued", "running", "completed", "failed"] }, "prompt": { "type": "string" }, "response": { "type": ["string", "null"] }, "patchId": { "type": ["string", "null"], "format": "uuid" }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "Patch": { "type": "object", "required": ["id", "attemptId", "aiTurnId", "baseRevision", "status", "diff", "createdAt"], "properties": { "id": { "type": "string", "format": "uuid" }, "attemptId": { "type": "string", "format": "uuid" }, "aiTurnId": { "type": "string", "format": "uuid" }, "baseRevision": { "type": "integer" }, "status": { "enum": ["proposed", "accepted", "rejected", "stale"] }, "diff": { "type": "string" }, "explanation": { "type": "string" }, "resultRevision": { "type": ["integer", "null"] }, "createdAt": { "type": "string", "format": "date-time" } } },
+      "Run": { "type": "object", "required": ["id", "attemptId", "revision", "kind", "status", "createdAt"], "properties": { "id": { "type": "string", "format": "uuid" }, "attemptId": { "type": "string", "format": "uuid" }, "revision": { "type": "integer" }, "kind": { "enum": ["baseline", "visible", "private"] }, "status": { "enum": ["queued", "running", "passed", "failed", "infra_failed", "timed_out"] }, "stdout": { "type": ["string", "null"] }, "stderr": { "type": ["string", "null"] }, "exitCode": { "type": ["integer", "null"] }, "createdAt": { "type": "string", "format": "date-time" }, "finishedAt": { "type": ["string", "null"], "format": "date-time" } } },
+      "Submission": { "type": "object", "required": ["id", "attemptId", "revision", "status", "createdAt"], "properties": { "id": { "type": "string", "format": "uuid" }, "attemptId": { "type": "string", "format": "uuid" }, "revision": { "type": "integer" }, "status": { "enum": ["queued", "running", "passed", "failed", "infra_failed"] }, "feedback": { "type": ["string", "null"] }, "createdAt": { "type": "string", "format": "date-time" } } }
+    }
+  }
+}
