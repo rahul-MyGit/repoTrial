@@ -1,6 +1,7 @@
 {
   "name": "repotrial",
   "private": true,
+  "packageManager": "bun@1.3.14",
   "scripts": {
     "dev:web": "npm --workspace apps/web run dev",
     "build:web": "npm --workspace apps/web run build",

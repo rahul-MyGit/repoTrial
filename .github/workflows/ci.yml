@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main, "agent/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  public-files:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check tracked public files
+        shell: bash
+        run: |
+          markdown_files="$(git ls-files '*.md')"
+          if [[ "$markdown_files" != "README.md" ]]; then
+            echo "Only the root README.md may be tracked. Found: $markdown_files"
+            exit 1
+          fi
+          if git ls-files | grep -E '(^|/)(\.env([^/]*|/)|node_modules|\.next|dist|build|coverage|\.cache|\.venv|vendor)(/|$)|\.(pem|key|p12|log)$|kubeconfig|terraform\.tfstate'; then
+            echo "Forbidden generated or private file is tracked"
+            exit 1
+          fi
+
+  api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: apps/api/go.mod
+          cache-dependency-path: apps/api/go.mod
+      - name: Test API
+        working-directory: apps/api
+        run: go test ./...
+
+  web:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun --cwd apps/web check
+      - run: bun --cwd apps/web build
