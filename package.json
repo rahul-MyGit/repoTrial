@@ -1,0 +1,11 @@
+{
+  "name": "repotrial",
+  "private": true,
+  "scripts": {
+    "dev:web": "npm --workspace apps/web run dev",
+    "build:web": "npm --workspace apps/web run build",
+    "check:web": "npm --workspace apps/web run check",
+    "test:api": "cd apps/api && go test ./..."
+  },
+  "workspaces": ["apps/web"]
+}
