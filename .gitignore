@@ -1,0 +1,31 @@
+# Local planning files. The root README.md is the only public Markdown file.
+*.md
+!/README.md
+/internal/
+
+# Secrets and local configuration.
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*kubeconfig*
+terraform.tfstate*
+
+# Dependencies and generated output.
+node_modules/
+.next/
+.turbo/
+.output/
+dist/
+build/
+coverage/
+.cache/
+.venv/
+vendor/
+*.log
+
+# Editor and OS files.
+.DS_Store
+.idea/
+.vscode/
