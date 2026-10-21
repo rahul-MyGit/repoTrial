@@ -47,8 +47,13 @@ func Load() (Config, error) {
 	}
 	appURL := os.Getenv("APP_URL")
 	parsedAppURL, err := url.Parse(appURL)
-	if err != nil || parsedAppURL.Host == "" || (parsedAppURL.Scheme != "http" && parsedAppURL.Scheme != "https") || parsedAppURL.Path != "" {
+	if err != nil || parsedAppURL.Host == "" || (parsedAppURL.Scheme != "http" && parsedAppURL.Scheme != "https") ||
+		parsedAppURL.Path != "" || parsedAppURL.RawQuery != "" || parsedAppURL.Fragment != "" || parsedAppURL.User != nil {
 		return Config{}, errors.New("APP_URL must be an HTTP(S) origin")
+	}
+	if parsedAppURL.Scheme == "http" && parsedAppURL.Hostname() != "localhost" &&
+		parsedAppURL.Hostname() != "127.0.0.1" && parsedAppURL.Hostname() != "::1" {
+		return Config{}, errors.New("APP_URL must use HTTPS outside local development")
 	}
 	clientID := os.Getenv("GOOGLE_CLIENT_ID")
 	clientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")

@@ -55,6 +55,25 @@ func TestLoadRejectsMissingOAuthSecret(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsNonOriginAppURLs(t *testing.T) {
+	for _, appURL := range []string{
+		"http://example.com:3000",
+		"https://user@example.com",
+		"https://example.com?token=secret",
+		"https://example.com#fragment",
+		"https://example.com/path",
+	} {
+		t.Run(appURL, func(t *testing.T) {
+			setOAuthConfig(t)
+			t.Setenv("DATABASE_URL", "postgres://example/test")
+			t.Setenv("APP_URL", appURL)
+			if _, err := Load(); err == nil {
+				t.Fatalf("Load() accepted %q", appURL)
+			}
+		})
+	}
+}
+
 func setOAuthConfig(t *testing.T) {
 	t.Helper()
 	t.Setenv("APP_URL", "http://localhost:3000")
