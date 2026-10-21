@@ -120,12 +120,12 @@ func (p *Postgres) Claim(ctx context.Context, workerID string, lease time.Durati
 	defer tx.Rollback(ctx)
 	var s Snapshot
 	var manifest, overlay []byte
-	err = tx.QueryRow(ctx, `SELECT r.id,r.attempt_id,r.revision,r.kind,v.artifact_uri,v.manifest,ar.file_overlay
+	err = tx.QueryRow(ctx, `SELECT r.id,r.attempt_id,r.revision,r.kind,v.artifact_uri,v.artifact_sha256,v.manifest,ar.file_overlay
 		FROM runs r JOIN attempts a ON a.id=r.attempt_id
 		JOIN challenge_versions v ON v.id=a.challenge_version_id
 		JOIN attempt_revisions ar ON ar.attempt_id=r.attempt_id AND ar.revision=r.revision
 		WHERE r.status='queued' ORDER BY r.created_at FOR UPDATE OF r SKIP LOCKED LIMIT 1`).Scan(
-		&s.RunID, &s.AttemptID, &s.Revision, &s.Kind, &s.ArtifactURI, &manifest, &overlay)
+		&s.RunID, &s.AttemptID, &s.Revision, &s.Kind, &s.ArtifactURI, &s.ArtifactSHA256, &manifest, &overlay)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Snapshot{}, false, nil
 	}

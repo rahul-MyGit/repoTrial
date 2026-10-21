@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/rahul-MyGit/repoTrial/apps/api/internal/artifact"
 )
 
 func TestBaselineMarker(t *testing.T) {
@@ -73,6 +75,33 @@ func TestContainerNameFencesDispatchAttempt(t *testing.T) {
 	s.DispatchAttempt = 0
 	if _, err := containerNameFor(s); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("invalid dispatch: %v", err)
+	}
+}
+
+func TestDockerRejectsChangedPublishedArtifactBeforeExecution(t *testing.T) {
+	root := t.TempDir()
+	source := filepath.Join(root, "challenge", "source")
+	if err := os.MkdirAll(source, 0755); err != nil {
+		t.Fatal(err)
+	}
+	file := filepath.Join(source, "main.go")
+	if err := os.WriteFile(file, []byte("package main"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	digest, err := artifact.DigestDirectory(filepath.Join(root, "challenge"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(file, []byte("package changed"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	s := Snapshot{RunID: "01234567-89ab-cdef-0123-456789abcdef", DispatchAttempt: 1,
+		ArtifactURI: "challenge", ArtifactSHA256: digest, Kind: Baseline,
+		Manifest: Manifest{SourceRoot: "source", BaselineCommand: []string{"go", "test", "./..."},
+			Limits: Limits{CPUMillis: 1000, MemoryMiB: 512, TimeoutSeconds: 60, OutputKiB: 128}}}
+	_, err = (Docker{ArtifactRoot: root, Image: "fixture", Binary: "missing-docker"}).Execute(context.Background(), s)
+	if err == nil || !strings.Contains(err.Error(), "digest mismatch") {
+		t.Fatalf("expected digest mismatch, got %v", err)
 	}
 }
 

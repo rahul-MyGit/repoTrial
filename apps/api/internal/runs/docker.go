@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/rahul-MyGit/repoTrial/apps/api/internal/artifact"
 )
 
 const maxSnapshotBytes = 4 << 20
@@ -111,6 +113,9 @@ func (d Docker) Execute(ctx context.Context, s Snapshot) (Result, error) {
 	root, err := filepath.EvalSymlinks(d.ArtifactRoot)
 	if err != nil {
 		return Result{}, err
+	}
+	if err := artifact.Verify(root, s.ArtifactURI, s.ArtifactSHA256); err != nil {
+		return Result{}, fmt.Errorf("verify published challenge: %w", err)
 	}
 	source := filepath.Join(root, filepath.FromSlash(s.ArtifactURI), filepath.FromSlash(s.Manifest.SourceRoot))
 	resolved, err := filepath.EvalSymlinks(source)
