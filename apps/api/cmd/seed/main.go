@@ -13,9 +13,10 @@ import (
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 	databaseURL := os.Getenv("DATABASE_URL")
+	sourceRoot := os.Getenv("CHALLENGE_SOURCE_ROOT")
 	artifactRoot := os.Getenv("ARTIFACT_ROOT")
-	if databaseURL == "" || artifactRoot == "" {
-		logger.Error("DATABASE_URL and ARTIFACT_ROOT are required")
+	if databaseURL == "" || sourceRoot == "" || artifactRoot == "" {
+		logger.Error("DATABASE_URL, CHALLENGE_SOURCE_ROOT, and ARTIFACT_ROOT are required")
 		os.Exit(1)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -26,7 +27,7 @@ func main() {
 		os.Exit(1)
 	}
 	defer pool.Close()
-	if err := catalog.SeedChallenge(ctx, pool, artifactRoot, "checkout-idempotency"); err != nil {
+	if err := catalog.SeedChallenge(ctx, pool, sourceRoot, artifactRoot, "checkout-idempotency"); err != nil {
 		logger.Error("challenge seed failed", "error", err)
 		os.Exit(1)
 	}

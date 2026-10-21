@@ -2,19 +2,16 @@ package catalog
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rahul-MyGit/repoTrial/apps/api/internal/artifact"
 )
 
 type SeedManifest struct {
@@ -31,11 +28,11 @@ type SeedManifest struct {
 
 // SeedChallenge publishes an immutable challenge version from a local artifact.
 // Repeating the same seed is safe; changing a published artifact requires a new version.
-func SeedChallenge(ctx context.Context, pool *pgxpool.Pool, artifactRoot, slug string) error {
+func SeedChallenge(ctx context.Context, pool *pgxpool.Pool, sourceRoot, artifactRoot, slug string) error {
 	if !slugPattern.MatchString(slug) {
 		return errors.New("invalid challenge slug")
 	}
-	root := filepath.Join(artifactRoot, slug)
+	root := filepath.Join(sourceRoot, slug)
 	manifestBytes, err := os.ReadFile(filepath.Join(root, "manifest.json"))
 	if err != nil {
 		return fmt.Errorf("read challenge manifest: %w", err)
@@ -52,7 +49,7 @@ func SeedChallenge(ctx context.Context, pool *pgxpool.Pool, artifactRoot, slug s
 	if _, err := os.Stat(filepath.Join(root, manifest.SourceRoot, "go.mod")); err != nil {
 		return fmt.Errorf("challenge source is incomplete: %w", err)
 	}
-	digest, err := artifactDigest(root)
+	artifactURI, digest, err := artifact.PublishDirectory(root, artifactRoot, slug, manifest.Version)
 	if err != nil {
 		return err
 	}
@@ -95,7 +92,7 @@ func SeedChallenge(ctx context.Context, pool *pgxpool.Pool, artifactRoot, slug s
 		(problem_id, version, manifest_schema_version, manifest, artifact_uri,
 		 artifact_sha256, evaluation_ref, published_at)
 		VALUES ($1, $2, 1, $3, $4, $5, $6, now())`,
-		problemID, manifest.Version, string(manifestBytes), slug, digest,
+		problemID, manifest.Version, string(manifestBytes), artifactURI, digest,
 		fmt.Sprintf("%s/v%d", slug, manifest.Version))
 	if err != nil {
 		return fmt.Errorf("publish challenge version: %w", err)
@@ -105,52 +102,4 @@ func SeedChallenge(ctx context.Context, pool *pgxpool.Pool, artifactRoot, slug s
 
 func validDifficulty(value string) bool {
 	return value == "beginner" || value == "intermediate" || value == "advanced"
-}
-
-func artifactDigest(root string) (string, error) {
-	var paths []string
-	err := filepath.WalkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("challenge artifact contains symlink: %s", fullPath)
-		}
-		if entry.IsDir() {
-			return nil
-		}
-		if !entry.Type().IsRegular() {
-			return fmt.Errorf("challenge artifact contains non-regular file: %s", fullPath)
-		}
-		rel, err := filepath.Rel(root, fullPath)
-		if err != nil {
-			return err
-		}
-		paths = append(paths, filepath.ToSlash(rel))
-		return nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("walk challenge artifact: %w", err)
-	}
-	sort.Strings(paths)
-	hash := sha256.New()
-	for _, name := range paths {
-		content, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(name)))
-		if err != nil {
-			return "", fmt.Errorf("read challenge artifact %s: %w", name, err)
-		}
-		if _, err := hash.Write([]byte(name + "\x00")); err != nil {
-			return "", err
-		}
-		if _, err := hash.Write(content); err != nil {
-			return "", err
-		}
-		if _, err := hash.Write([]byte("\x00")); err != nil {
-			return "", err
-		}
-	}
-	if len(paths) == 0 {
-		return "", errors.New("challenge artifact is empty")
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
 }

@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/rahul-MyGit/repoTrial/apps/api/internal/artifact"
 )
 
 type fakeRepository struct{ gotKey string }
@@ -48,8 +50,12 @@ func TestFileServiceAppliesRevisionOverlayAndRejectsTraversal(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "main.go"), []byte("before"), 0644); err != nil {
 		t.Fatal(err)
 	}
+	digest, err := artifact.DigestDirectory(filepath.Join(root, "challenge"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	service := NewFileService(fakeSnapshot{Snapshot{
-		ArtifactURI: "challenge", SourceRoot: "source", Revision: 1,
+		ArtifactURI: "challenge", ArtifactSHA256: digest, SourceRoot: "source", Revision: 1,
 		Overlay: map[string]string{"main.go": "after"},
 	}}, root)
 
@@ -66,6 +72,12 @@ func TestFileServiceAppliesRevisionOverlayAndRejectsTraversal(t *testing.T) {
 	if _, err := service.Read(context.Background(), "user", "attempt", "missing.go", nil); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("missing file: got %v", err)
 	}
+	if err := os.WriteFile(filepath.Join(source, "main.go"), []byte("tampered"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.Read(context.Background(), "user", "attempt", "main.go", nil); err == nil {
+		t.Fatal("tampered published artifact was exposed")
+	}
 }
 
 func TestFileServiceRejectsSymlink(t *testing.T) {
@@ -78,7 +90,7 @@ func TestFileServiceRejectsSymlink(t *testing.T) {
 		t.Fatal(err)
 	}
 	service := NewFileService(fakeSnapshot{Snapshot{
-		ArtifactURI: "challenge", SourceRoot: "source", Overlay: map[string]string{},
+		ArtifactURI: "challenge", ArtifactSHA256: "0000000000000000000000000000000000000000000000000000000000000000", SourceRoot: "source", Overlay: map[string]string{},
 	}}, root)
 	if _, err := service.List(context.Background(), "user", "attempt", nil); err == nil {
 		t.Fatal("symlink was exposed")

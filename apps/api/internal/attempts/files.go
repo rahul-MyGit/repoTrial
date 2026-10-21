@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/rahul-MyGit/repoTrial/apps/api/internal/artifact"
 )
 
 const maxSourceFileBytes = 1024 * 1024
@@ -38,10 +39,11 @@ type File struct {
 }
 
 type Snapshot struct {
-	ArtifactURI string
-	SourceRoot  string
-	Revision    int
-	Overlay     map[string]string
+	ArtifactURI    string
+	ArtifactSHA256 string
+	SourceRoot     string
+	Revision       int
+	Overlay        map[string]string
 }
 
 type SnapshotRepository interface {
@@ -97,6 +99,9 @@ func (s *FileService) Read(ctx context.Context, userID, attemptID, name string, 
 func (s *FileService) load(snapshot Snapshot) (map[string]string, error) {
 	if !validRelativePath(snapshot.ArtifactURI) || !validRelativePath(snapshot.SourceRoot) {
 		return nil, fmt.Errorf("unsafe artifact path")
+	}
+	if err := artifact.Verify(s.artifactRoot, snapshot.ArtifactURI, snapshot.ArtifactSHA256); err != nil {
+		return nil, fmt.Errorf("verify published artifact: %w", err)
 	}
 	root := filepath.Join(s.artifactRoot, filepath.FromSlash(snapshot.ArtifactURI), filepath.FromSlash(snapshot.SourceRoot))
 	if err := rejectSymlinkComponents(s.artifactRoot, snapshot.ArtifactURI, snapshot.SourceRoot); err != nil {
@@ -181,14 +186,15 @@ func (p *SnapshotPostgres) Snapshot(
 	var snapshot Snapshot
 	var state State
 	var overlay []byte
-	err := p.db.QueryRow(ctx, `SELECT a.state, v.artifact_uri,
+	err := p.db.QueryRow(ctx, `SELECT a.state, v.artifact_uri, v.artifact_sha256,
 		v.manifest->>'sourceRoot', r.revision, r.file_overlay
 		FROM attempts a
 		JOIN challenge_versions v ON v.id = a.challenge_version_id
 		JOIN attempt_revisions r ON r.attempt_id = a.id
 			AND r.revision = COALESCE($3::integer, a.current_revision)
 		WHERE a.id = $1 AND a.user_id = $2`, attemptID, userID, requested).
-		Scan(&state, &snapshot.ArtifactURI, &snapshot.SourceRoot, &snapshot.Revision, &overlay)
+		Scan(&state, &snapshot.ArtifactURI, &snapshot.ArtifactSHA256,
+			&snapshot.SourceRoot, &snapshot.Revision, &overlay)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Snapshot{}, ErrNotFound
 	}
