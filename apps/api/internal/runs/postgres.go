@@ -138,8 +138,9 @@ func (p *Postgres) Claim(ctx context.Context, workerID string, lease time.Durati
 	if err := json.Unmarshal(overlay, &s.Overlay); err != nil {
 		return Snapshot{}, false, fmt.Errorf("decode revision: %w", err)
 	}
-	_, err = tx.Exec(ctx, `UPDATE runs SET status='running',worker_id=$2,lease_expires_at=now()+$3::interval,
-		dispatch_attempts=dispatch_attempts+1,started_at=now() WHERE id=$1`, s.RunID, workerID, lease.String())
+	err = tx.QueryRow(ctx, `UPDATE runs SET status='running',worker_id=$2,lease_expires_at=now()+$3::interval,
+		dispatch_attempts=dispatch_attempts+1,started_at=now() WHERE id=$1 RETURNING dispatch_attempts`,
+		s.RunID, workerID, lease.String()).Scan(&s.DispatchAttempt)
 	if err != nil {
 		return Snapshot{}, false, err
 	}
@@ -156,9 +157,10 @@ func (p *Postgres) Finish(ctx context.Context, s Snapshot, workerID string, resu
 	}
 	defer tx.Rollback(ctx)
 	var active bool
-	err = tx.QueryRow(ctx, `UPDATE runs SET status=$3,stdout=$4,stderr=$5,exit_code=$6,finished_at=now(),
-		lease_expires_at=NULL WHERE id=$1 AND worker_id=$2 AND status='running' RETURNING true`, s.RunID, workerID,
-		result.Status, result.Stdout, result.Stderr, result.ExitCode).Scan(&active)
+	err = tx.QueryRow(ctx, `UPDATE runs SET status=$4,stdout=$5,stderr=$6,exit_code=$7,finished_at=now(),
+		lease_expires_at=NULL WHERE id=$1 AND worker_id=$2 AND dispatch_attempts=$3
+		AND status='running' AND lease_expires_at > now() RETURNING true`, s.RunID, workerID,
+		s.DispatchAttempt, result.Status, result.Stdout, result.Stderr, result.ExitCode).Scan(&active)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrConflict
 	}

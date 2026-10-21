@@ -59,6 +59,23 @@ func TestBoundedWriter(t *testing.T) {
 	}
 }
 
+func TestContainerNameFencesDispatchAttempt(t *testing.T) {
+	s := Snapshot{RunID: "01234567-89ab-cdef-0123-456789abcdef", DispatchAttempt: 1}
+	first, err := containerNameFor(s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.DispatchAttempt = 2
+	second, err := containerNameFor(s)
+	if err != nil || first == second {
+		t.Fatalf("first=%q second=%q err=%v", first, second, err)
+	}
+	s.DispatchAttempt = 0
+	if _, err := containerNameFor(s); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("invalid dispatch: %v", err)
+	}
+}
+
 type fakeQueue struct {
 	s        Snapshot
 	finished Result

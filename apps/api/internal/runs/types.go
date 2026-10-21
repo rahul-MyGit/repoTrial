@@ -73,6 +73,7 @@ type Manifest struct {
 type Snapshot struct {
 	RunID, AttemptID, ArtifactURI string
 	Revision                      int
+	DispatchAttempt               int
 	Kind                          Kind
 	Overlay                       map[string]string
 	Manifest                      Manifest

@@ -89,6 +89,13 @@ func commandFor(s Snapshot) ([]string, error) {
 	return argv, nil
 }
 
+func containerNameFor(s Snapshot) (string, error) {
+	if !runIDPattern.MatchString(s.RunID) || s.DispatchAttempt < 1 {
+		return "", ErrInvalid
+	}
+	return "repotrial-" + s.RunID + "-" + strconv.Itoa(s.DispatchAttempt), nil
+}
+
 func (d Docker) Execute(ctx context.Context, s Snapshot) (Result, error) {
 	argv, err := commandFor(s)
 	if err != nil {
@@ -97,8 +104,9 @@ func (d Docker) Execute(ctx context.Context, s Snapshot) (Result, error) {
 	if !safeRelative(s.ArtifactURI) || !safeRelative(s.Manifest.SourceRoot) || d.ArtifactRoot == "" || d.Image == "" {
 		return Result{}, ErrInvalid
 	}
-	if !runIDPattern.MatchString(s.RunID) {
-		return Result{}, ErrInvalid
+	containerName, err := containerNameFor(s)
+	if err != nil {
+		return Result{}, err
 	}
 	root, err := filepath.EvalSymlinks(d.ArtifactRoot)
 	if err != nil {
@@ -145,7 +153,6 @@ func (d Docker) Execute(ctx context.Context, s Snapshot) (Result, error) {
 	if binary == "" {
 		binary = "docker"
 	}
-	containerName := "repotrial-" + s.RunID
 	// The CLI can be killed by a deadline while the container continues running.
 	// Remove the named container independently before returning in every case.
 	defer func() {
