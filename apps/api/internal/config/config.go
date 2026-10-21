@@ -4,14 +4,23 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"os"
 	"strconv"
+	"strings"
 )
 
 type Config struct {
-	Address     string
-	DatabaseURL string
-	DBMaxConns  int32
+	Address            string
+	DatabaseURL        string
+	DBMaxConns         int32
+	AppURL             string
+	GoogleClientID     string
+	GoogleClientSecret string
+	OAuthStateSecret   string
+	OAuthRedirectURL   string
+	ArtifactRoot       string
+	CookieSecure       bool
 }
 
 func Load() (Config, error) {
@@ -36,10 +45,33 @@ func Load() (Config, error) {
 		}
 		maxConns = int32(parsed)
 	}
+	appURL := os.Getenv("APP_URL")
+	parsedAppURL, err := url.Parse(appURL)
+	if err != nil || parsedAppURL.Host == "" || (parsedAppURL.Scheme != "http" && parsedAppURL.Scheme != "https") || parsedAppURL.Path != "" {
+		return Config{}, errors.New("APP_URL must be an HTTP(S) origin")
+	}
+	clientID := os.Getenv("GOOGLE_CLIENT_ID")
+	clientSecret := os.Getenv("GOOGLE_CLIENT_SECRET")
+	stateSecret := os.Getenv("OAUTH_STATE_SECRET")
+	if clientID == "" || clientSecret == "" || len(stateSecret) < 32 {
+		return Config{}, errors.New("Google OAuth credentials and an OAUTH_STATE_SECRET of at least 32 bytes are required")
+	}
+	artifactRoot := os.Getenv("ARTIFACT_ROOT")
+	if strings.TrimSpace(artifactRoot) == "" {
+		return Config{}, errors.New("ARTIFACT_ROOT is required")
+	}
+	redirectURL := strings.TrimRight(appURL, "/") + "/api/v1/auth/google/callback"
 
 	return Config{
-		Address:     net.JoinHostPort("", port),
-		DatabaseURL: databaseURL,
-		DBMaxConns:  maxConns,
+		Address:            net.JoinHostPort("", port),
+		DatabaseURL:        databaseURL,
+		DBMaxConns:         maxConns,
+		AppURL:             appURL,
+		GoogleClientID:     clientID,
+		GoogleClientSecret: clientSecret,
+		OAuthStateSecret:   stateSecret,
+		OAuthRedirectURL:   redirectURL,
+		ArtifactRoot:       artifactRoot,
+		CookieSecure:       parsedAppURL.Scheme == "https",
 	}, nil
 }
